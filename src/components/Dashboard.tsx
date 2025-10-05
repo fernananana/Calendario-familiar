@@ -3,16 +3,30 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { 
-  CheckCircle, 
-  Clock, 
-  TrendingUp, 
+import {
+  CheckCircle,
+  Clock,
+  TrendingUp,
   Users,
   Calendar as CalendarIcon,
-  Star
+  Star,
+  BarChart,
+  PieChart as PieChartIcon,
 } from 'lucide-react';
 import { Tarea, TareasPorDia, Miembro, EstadisticasMiembro } from '@/types';
 import { MESES } from '@/lib/calendar-utils';
+import {
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from 'recharts';
+import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
 
 interface DashboardProps {
   tareas: TareasPorDia;
@@ -22,7 +36,7 @@ interface DashboardProps {
 }
 
 const Dashboard = ({ tareas, currentMonth, currentYear, onSectionChange }: DashboardProps) => {
-  const estadisticas = useMemo(() => {
+  const { estadisticas, chartData, categoryData } = useMemo(() => {
     const todasLasTareas: Tarea[] = Object.values(tareas).flat();
     const completadas = todasLasTareas.filter(t => t.completada);
     const pendientes = todasLasTareas.filter(t => !t.completada);
@@ -33,12 +47,23 @@ const Dashboard = ({ tareas, currentMonth, currentYear, onSectionChange }: Dashb
       ambos: { total: 0, completadas: 0, pendientes: 0, porcentaje: 0 },
     };
 
+    const tareasPorCategoria: { [key: string]: number } = {};
+
     todasLasTareas.forEach(tarea => {
+      // Stats por miembro
       estadisticasPorMiembro[tarea.miembro].total++;
       if (tarea.completada) {
         estadisticasPorMiembro[tarea.miembro].completadas++;
       } else {
         estadisticasPorMiembro[tarea.miembro].pendientes++;
+      }
+      
+      // Stats por categoría
+      const categoria = tarea.categoria || 'Sin Categoría';
+      if (tareasPorCategoria[categoria]) {
+        tareasPorCategoria[categoria]++;
+      } else {
+        tareasPorCategoria[categoria] = 1;
       }
     });
 
@@ -47,7 +72,15 @@ const Dashboard = ({ tareas, currentMonth, currentYear, onSectionChange }: Dashb
       stats.porcentaje = stats.total > 0 ? Math.round((stats.completadas / stats.total) * 100) : 0;
     });
 
-    return {
+    const chartData = [
+      { name: 'Mamá', completadas: estadisticasPorMiembro.mama.completadas, pendientes: estadisticasPorMiembro.mama.pendientes },
+      { name: 'Papá', completadas: estadisticasPorMiembro.papa.completadas, pendientes: estadisticasPorMiembro.papa.pendientes },
+      { name: 'Ambos', completadas: estadisticasPorMiembro.ambos.completadas, pendientes: estadisticasPorMiembro.ambos.pendientes },
+    ];
+    
+    const categoryData = Object.entries(tareasPorCategoria).map(([name, value]) => ({ name, value }));
+    
+    const estadisticas = {
       total: todasLasTareas.length,
       completadas: completadas.length,
       pendientes: pendientes.length,
@@ -56,7 +89,11 @@ const Dashboard = ({ tareas, currentMonth, currentYear, onSectionChange }: Dashb
       tareasRecientes: completadas.slice(-5).reverse(),
       tareasPendientesUrgentes: pendientes.slice(0, 5)
     };
+    
+    return { estadisticas, chartData, categoryData };
   }, [tareas]);
+
+  const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088fe', '#00c49f'];
 
   const getMiembroIcon = (miembro: Miembro) => {
     switch (miembro) {
@@ -154,33 +191,73 @@ const Dashboard = ({ tareas, currentMonth, currentYear, onSectionChange }: Dashb
           </div>
         </CardContent>
       </Card>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Estadísticas por Miembro con Gráfico */}
+        <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                    <BarChart className="w-5 h-5" />
+                    Reparto de Tareas
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                <ChartContainer config={{}} className="min-h-[250px] w-full">
+                    <ResponsiveContainer width="100%" height={250}>
+                        <BarChart data={chartData} margin={{ top: 20, right: 20, bottom: 5, left: 0 }}>
+                            <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                            <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                            <Tooltip content={<ChartTooltipContent />} />
+                            <Legend />
+                            <Bar dataKey="completadas" fill="#82ca9d" name="Completadas" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="pendientes" fill="#ffc658" name="Pendientes" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </ChartContainer>
+            </CardContent>
+        </Card>
 
-      {/* Estadísticas por Miembro */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Reparto de Tareas</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {Object.entries(estadisticas.estadisticasPorMiembro).map(([miembro, stats]) => (
-              <div key={miembro} className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">{getMiembroIcon(miembro as Miembro)}</span>
-                  <span className="font-medium capitalize">{miembro}</span>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>Completadas</span>
-                    <span>{stats.completadas}/{stats.total}</span>
-                  </div>
-                  <Progress value={stats.porcentaje} className="h-2" />
-                  <p className="text-xs text-muted-foreground">{stats.porcentaje}% completado</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+        {/* Tareas por Categoría */}
+        <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                    <PieChartIcon className="w-5 h-5" />
+                    Tareas por Categoría
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                {categoryData.length > 0 ? (
+                    <ChartContainer config={{}} className="min-h-[250px] w-full">
+                        <ResponsiveContainer width="100%" height={250}>
+                            <PieChart>
+                                <Pie
+                                    data={categoryData}
+                                    cx="50%"
+                                    cy="50%"
+                                    labelLine={false}
+                                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                                    outerRadius={80}
+                                    fill="#8884d8"
+                                    dataKey="value"
+                                >
+                                    {categoryData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                    ))}
+                                </Pie>
+                                <Tooltip content={<ChartTooltipContent nameKey="name" />} />
+                                <Legend />
+                            </PieChart>
+                        </ResponsiveContainer>
+                    </ChartContainer>
+                ) : (
+                    <p className="text-muted-foreground text-center py-4">
+                        No hay datos de categorías para mostrar.
+                    </p>
+                )}
+            </CardContent>
+        </Card>
+      </div>
+
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Tareas Pendientes Urgentes */}
